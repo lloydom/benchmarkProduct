@@ -132,6 +132,9 @@ else:
         st.session_state.current_query = None
     if 'current_response' not in st.session_state:
         st.session_state.current_response = None
+    # Initialize session state for dropdown
+    if 'selected_question' not in st.session_state:
+        st.session_state.selected_question = "Select a question"
 
     # Sidebar for navigation
     st.sidebar.header("Past Queries")
@@ -203,93 +206,130 @@ else:
 
     # Main chat area
     st.header("Chat Interface")
-    user_query = st.text_input("Enter your query (e.g., 'How to improve Apar’s lubricants revenue?' or 'Compare Apar to peers in cables')", key="query_input")
 
-    if selected_chat != "Select a past query":
-        selected_index = chat_options.index(selected_chat) - 1
-        st.session_state.current_query = st.session_state.chat_history[selected_index]['user']
-        st.session_state.current_response = st.session_state.chat_history[selected_index]['bot']
-        user_query = st.session_state.current_query
+    # Placeholder list of predefined questions (replace with your questions later)
+    predefined_questions = [
+        "Select a question",
+        "How can Apar improve revenue in conductors?",
+        "How to improve Apars revenue?",
+        "what segments apar works in and how it does it compare to peers? show in a table towards end",
+        "what is apars revenue compared to peers across segments",
+        "How  does Apar compare to peers in lubricants?",
+        "Compare Apar to peers in cables",
+        "What drives growth in Apar's lubricants segment?",
+        "How does Apar perform in EPC compared to peers?",
+        "What strategies should Apar Industries adopt for its lubricants market?",
+        "what are the demand forecasts for Apar products like conductors, power cables, solar cables?",
+        "What is the predicted revenue growth for Apar Industries in lubricants?",
+        "what are the demand forecasts for Apar products like conductors, power cables, solar cables? how does it compare to its peers?",
+        "Compare Apar across all its peers and draw a strategy to implement to improve revenues across segments lacking, if ahead call out separately in a separate header",
+        "What are Apar’s competitive challenges in the conductors segment?",
+        "What are Apar’s competitive challenges in the lubricants segment?",
+        "Compare the predicted revenue growth of Apar and peers across all segments over time."
+    ]
+
+    # Dropdown for selecting predefined questions
+    selected_question = st.selectbox(
+        "Select a predefined question",
+        predefined_questions,
+        key="predefined_question",
+        index=predefined_questions.index(st.session_state.selected_question)
+    )
+
+    # Text box for custom queries
+    custom_query = st.text_input("Or enter a custom query", key="custom_query")
+
+    # Reset dropdown to "Select a question" when text box is used
+    if custom_query:
+        st.session_state.selected_question = "Select a question"
+        user_query = custom_query
+    else:
+        user_query = selected_question if selected_question != "Select a question" else ""
+
+    # Update selected question in session state
+    if selected_question != st.session_state.selected_question:
+        st.session_state.selected_question = selected_question
 
     if user_query and user_query != st.session_state.current_query:
-        response = ""
-        # Identify query intent
-        query_lower = user_query.lower()
-        target_segment = None
-        for alias, segment in SEGMENT_ALIASES.items():
-            if alias in query_lower:
-                target_segment = segment
-                break
-        compare_peers = 'compare' in query_lower and 'peers' in query_lower
+        with st.spinner("Processing your query..."):
+            response = ""
+            # Identify query intent
+            query_lower = user_query.lower()
+            target_segment = None
+            for alias, segment in SEGMENT_ALIASES.items():
+                if alias in query_lower:
+                    target_segment = segment
+                    break
+            compare_peers = 'compare' in query_lower and 'peers' in query_lower
 
-        # Construct BigQuery SQL
-        if compare_peers and target_segment:
-            print(1)
-            sql_query = f"""
-            SELECT symbol, 
-            FORMAT('%.2f%%', predicted_{target_segment}{'s' if target_segment != 'epc' else ''}_revenue_growth.value * 100) AS growth, 
-            explanation
-            FROM `{SEGMENT_TABLES[target_segment]}`
-            WHERE symbol IN ('{COMPANY_1_TICKER}', '{PEER_TICKERS[0]}', '{PEER_TICKERS[1]}', '{PEER_TICKERS[2]}', '{PEER_TICKERS[3]}', '{PEER_TICKERS[4]}', '{PEER_TICKERS[5]}', '{PEER_TICKERS[6]}')
-            LIMIT 8
-            """
-        elif compare_peers:
-            print(2)
-            sql_queries = [
-                f"""
+            # Construct BigQuery SQL
+            if compare_peers and target_segment:
+                print(1)
+                sql_query = f"""
                 SELECT symbol, 
-                FORMAT('%.2f%%', predicted_{segment}{'s' if segment != 'epc' else ''}_revenue_growth.value * 100) AS growth, 
-                '{segment}' AS segment, 
+                FORMAT('%.2f%%', predicted_{target_segment}{'s' if target_segment != 'epc' else ''}_revenue_growth.value * 100) AS growth, 
                 explanation
-                FROM `{SEGMENT_TABLES[segment]}`
+                FROM `{SEGMENT_TABLES[target_segment]}`
                 WHERE symbol IN ('{COMPANY_1_TICKER}', '{PEER_TICKERS[0]}', '{PEER_TICKERS[1]}', '{PEER_TICKERS[2]}', '{PEER_TICKERS[3]}', '{PEER_TICKERS[4]}', '{PEER_TICKERS[5]}', '{PEER_TICKERS[6]}')
+                LIMIT 8
                 """
-                for segment in SEGMENT_TABLES.keys()
-            ]
-            sql_query = ' UNION ALL '.join(sql_queries)
-        elif target_segment:
-            print(3)
-            sql_query = f"""
-            SELECT symbol, 
-            FORMAT('%.2f%%', predicted_{target_segment}{'s' if target_segment != 'epc' else ''}_revenue_growth.value * 100) AS growth, 
-            explanation
-            FROM `{SEGMENT_TABLES[target_segment]}`
-            WHERE symbol = '{COMPANY_1_TICKER}'
-            LIMIT 1
-            """
-        else:
-            sql_queries = [
-                f"""
+            elif compare_peers:
+                print(2)
+                sql_queries = [
+                    f"""
+                    SELECT symbol, 
+                    FORMAT('%.2f%%', predicted_{segment}{'s' if segment != 'epc' else ''}_revenue_growth.value * 100) AS growth, 
+                    '{segment}' AS segment, 
+                    explanation
+                    FROM `{SEGMENT_TABLES[segment]}`
+                    WHERE symbol IN ('{COMPANY_1_TICKER}', '{PEER_TICKERS[0]}', '{PEER_TICKERS[1]}', '{PEER_TICKERS[2]}', '{PEER_TICKERS[3]}', '{PEER_TICKERS[4]}', '{PEER_TICKERS[5]}', '{PEER_TICKERS[6]}')
+                    """
+                    for segment in SEGMENT_TABLES.keys()
+                ]
+                sql_query = ' UNION ALL '.join(sql_queries)
+            elif target_segment:
+                print(3)
+                sql_query = f"""
                 SELECT symbol, 
-                FORMAT('%.2f%%', predicted_{seg}{'s' if seg != 'epc' else ''}_revenue_growth.value * 100) AS growth, 
-                '{seg}' AS segment, 
+                FORMAT('%.2f%%', predicted_{target_segment}{'s' if target_segment != 'epc' else ''}_revenue_growth.value * 100) AS growth, 
                 explanation
-                FROM `{SEGMENT_TABLES[seg]}`
+                FROM `{SEGMENT_TABLES[target_segment]}`
                 WHERE symbol = '{COMPANY_1_TICKER}'
+                LIMIT 1
                 """
-                for seg in SEGMENT_TABLES.keys()
-            ]
-            sql_query = ' UNION ALL '.join(sql_queries)
-
-        # Print SQL query for debugging
-        print("Generated SQL Query:")
-        print(sql_query)
-
-        try:
-            results = query_bigquery(sql_query)
-        except Exception as e:
-            response = f"Error querying BigQuery: {str(e)}"
-        else:
-            if isinstance(results, pd.DataFrame):
-                context = results.to_string()
-                response = generate_response(user_query, context)
             else:
-                response = "Error fetching data from BigQuery. Please check the prediction tables."
+                sql_queries = [
+                    f"""
+                    SELECT symbol, 
+                    FORMAT('%.2f%%', predicted_{seg}{'s' if seg != 'epc' else ''}_revenue_growth.value * 100) AS growth, 
+                    '{seg}' AS segment, 
+                    explanation
+                    FROM `{SEGMENT_TABLES[seg]}`
+                    WHERE symbol = '{COMPANY_1_TICKER}'
+                    """
+                    for seg in SEGMENT_TABLES.keys()
+                ]
+                sql_query = ' UNION ALL '.join(sql_queries)
 
-        # Update chat history and current state
-        st.session_state.chat_history.append({"user": user_query, "bot": response})
-        st.session_state.current_query = user_query
-        st.session_state.current_response = response
+            # Print SQL query for debugging
+            print("Generated SQL Query:")
+            print(sql_query)
+
+            try:
+                results = query_bigquery(sql_query)
+            except Exception as e:
+                response = f"Error querying BigQuery: {str(e)}"
+            else:
+                if isinstance(results, pd.DataFrame):
+                    context = results.to_string()
+                    response = generate_response(user_query, context)
+                else:
+                    response = "Error fetching data from BigQuery. Please check the prediction tables."
+
+            # Update chat history and current state
+            st.session_state.chat_history.append({"user": user_query, "bot": response})
+            st.session_state.current_query = user_query
+            st.session_state.current_response = response
 
     # Display current query and response
     if st.session_state.current_query:
@@ -357,6 +397,7 @@ else:
         st.session_state.chat_history = []
         st.session_state.current_query = None
         st.session_state.current_response = None
+        st.session_state.selected_question = "Select a question"
         st.rerun()
 
     # Grouped Dashboard Section
@@ -366,6 +407,7 @@ else:
         st.session_state.show_dashboard = True
         st.session_state.current_query = None  # Clear current query
         st.session_state.current_response = None  # Clear current response
+        st.session_state.selected_question = "Select a question"  # Reset dropdown
         st.rerun()
 
     if st.session_state.show_dashboard:
